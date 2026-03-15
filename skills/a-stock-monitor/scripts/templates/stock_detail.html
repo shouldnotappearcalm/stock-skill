@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票详情 - A股量化监控</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.0/dist/echarts.min.js"></script>
+    <style>
+        :root {
+            --color-red: #f5222d;
+            --color-green: #52c41a;
+            --color-blue: #1890ff;
+            --color-orange: #fa8c16;
+            --bg-light: #fafafa;
+        }
+        body { background-color: var(--bg-light); }
+        .stock-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+        }
+        .stock-name { font-size: 28px; font-weight: 700; }
+        .stock-code { font-size: 16px; opacity: 0.9; }
+        .stock-price { font-size: 48px; font-weight: 700; margin: 16px 0; }
+        .stock-change { font-size: 24px; }
+        .price-up { color: var(--color-red); }
+        .price-down { color: var(--color-green); }
+        .panel {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        .panel-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+        .indicator-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+        .indicator-item {
+            text-align: center;
+            padding: 12px;
+            background: #fafafa;
+            border-radius: 8px;
+        }
+        .indicator-value { font-size: 20px; font-weight: 600; color: #262626; }
+        .indicator-label { font-size: 12px; color: #8c8c8c; margin-top: 4px; }
+        #klineChart { width: 100%; height: 400px; }
+        .btn-back {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .btn-back:hover { background: rgba(255,255,255,0.3); }
+        .signal-tag {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin: 2px;
+        }
+        .signal-buy { background: #fff1f0; color: #cf1322; }
+        .signal-sell { background: #f6ffed; color: #389e0d; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <!-- 返回按钮 -->
+        <button class="btn-back mb-3" onclick="location.href='/'">← 返回首页</button>
+        
+        <!-- 股票头部信息 -->
+        <div class="stock-header">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="stock-name" id="stockName">加载中...</div>
+                    <div class="stock-code" id="stockCode">{{ code }}</div>
+                </div>
+                <div class="text-end">
+                    <div class="stock-price" id="stockPrice">--</div>
+                    <div class="stock-change" id="stockChange">--</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 主要指标 -->
+        <div class="panel">
+            <div class="panel-title">📊 主要指标</div>
+            <div class="indicator-grid">
+                <div class="indicator-item">
+                    <div class="indicator-value" id="indOpen">--</div>
+                    <div class="indicator-label">今开</div>
+                </div>
+                <div class="indicator-item">
+                    <div class="indicator-value" id="indHigh">--</div>
+                    <div class="indicator-label">最高</div>
+                </div>
+                <div class="indicator-item">
+                    <div class="indicator-value" id="indLow">--</div>
+                    <div class="indicator-label">最低</div>
+                </div>
+                <div class="indicator-item">
+                    <div class="indicator-value" id="indVolume">--</div>
+                    <div class="indicator-label">成交量</div>
+                </div>
+                <div class="indicator-item">
+                    <div class="indicator-value" id="indAmount">--</div>
+                    <div class="indicator-label">成交额</div>
+                </div>
+                <div class="indicator-item">
+                    <div class="indicator-value" id="indTurnover">--</div>
+                    <div class="indicator-label">换手率</div>
+                </div>
+                <div class="indicator-item">
+                    <div class="indicator-value" id="indAmplitude">--</div>
+                    <div class="indicator-label">振幅</div>
+                </div>
+                <div class="indicator-item">
+                    <div class="indicator-value" id="indUpdateTime">--</div>
+                    <div class="indicator-label">更新时间</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- K线图 -->
+        <div class="panel">
+            <div class="panel-title">📈 K线图</div>
+            <div id="klineChart"></div>
+        </div>
+        
+        <!-- 技术指标 -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="panel">
+                    <div class="panel-title">📉 技术指标</div>
+                    <div id="techIndicators">
+                        <div class="text-center text-muted py-4">加载中...</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="panel">
+                    <div class="panel-title">💰 资金流向</div>
+                    <div id="fundFlow">
+                        <div class="text-center text-muted py-4">加载中...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const stockCode = '{{ code }}';
+        
+        // 加载股票详情
+        function loadStockDetail() {
+            $.ajax({
+                url: `/api/stock/${stockCode}`,
+                method: 'GET',
+                success: function(response) {
+                    if (response.status === 'success') {
+                        displayStockInfo(response.data);
+                    } else {
+                        showError(response.message);
+                    }
+                },
+                error: function() {
+                    showError('加载失败');
+                }
+            });
+        }
+        
+        // 显示股票信息
+        function displayStockInfo(data) {
+            // 头部信息
+            $('#stockName').text(data.name || '未知');
+            $('#stockCode').text(data.code);
+            
+            const price = data.price || 0;
+            const changePct = data.change_pct || 0;
+            const changeClass = changePct >= 0 ? 'price-up' : 'price-down';
+            const changeSign = changePct >= 0 ? '+' : '';
+            
+            $('#stockPrice').text('¥' + price.toFixed(2)).addClass(changeClass);
+            $('#stockChange').text(changeSign + changePct.toFixed(2) + '%').addClass(changeClass);
+            
+            // 主要指标
+            $('#indOpen').text(data.open ? data.open.toFixed(2) : '--');
+            $('#indHigh').text(data.high ? data.high.toFixed(2) : '--');
+            $('#indLow').text(data.low ? data.low.toFixed(2) : '--');
+            $('#indVolume').text(formatVolume(data.volume));
+            $('#indAmount').text(formatAmount(data.amount));
+            $('#indTurnover').text(data.turnover ? data.turnover.toFixed(2) + '%' : '--');
+            $('#indAmplitude').text(data.amplitude ? data.amplitude.toFixed(2) + '%' : '--');
+            $('#indUpdateTime').text(data.update_time || '--');
+            
+            // 技术指标
+            if (data.tech_indicators) {
+                displayTechIndicators(data.tech_indicators);
+            }
+            
+            // 资金流向
+            if (data.fund_flow) {
+                displayFundFlow(data.fund_flow);
+            }
+        }
+        
+        // 显示技术指标
+        function displayTechIndicators(tech) {
+            const html = `
+                <table class="table table-sm">
+                    <tr><td>MA5</td><td>${tech.ma5 ? tech.ma5.toFixed(2) : '--'}</td></tr>
+                    <tr><td>MA10</td><td>${tech.ma10 ? tech.ma10.toFixed(2) : '--'}</td></tr>
+                    <tr><td>MA20</td><td>${tech.ma20 ? tech.ma20.toFixed(2) : '--'}</td></tr>
+                    <tr><td>RSI</td><td>${tech.rsi ? tech.rsi.toFixed(2) : '--'}</td></tr>
+                    <tr><td>MACD</td><td>${tech.macd ? tech.macd.toFixed(4) : '--'}</td></tr>
+                    <tr><td>DIF</td><td>${tech.dif ? tech.dif.toFixed(4) : '--'}</td></tr>
+                    <tr><td>DEA</td><td>${tech.dea ? tech.dea.toFixed(4) : '--'}</td></tr>
+                </table>
+            `;
+            $('#techIndicators').html(html);
+        }
+        
+        // 显示资金流向
+        function displayFundFlow(fund) {
+            const mainIn = fund.main_in || 0;
+            const retailIn = fund.retail_in || 0;
+            const html = `
+                <table class="table table-sm">
+                    <tr><td>主力净流入</td><td class="${mainIn >= 0 ? 'price-up' : 'price-down'}">${formatAmount(mainIn)}</td></tr>
+                    <tr><td>散户净流入</td><td class="${retailIn >= 0 ? 'price-up' : 'price-down'}">${formatAmount(retailIn)}</td></tr>
+                    <tr><td>主力占比</td><td>${fund.main_ratio ? fund.main_ratio.toFixed(2) + '%' : '--'}</td></tr>
+                </table>
+            `;
+            $('#fundFlow').html(html);
+        }
+        
+        // 加载K线图
+        function loadKline() {
+            $.ajax({
+                url: `/api/history/${stockCode}?days=60`,
+                method: 'GET',
+                success: function(response) {
+                    if (response.status === 'success' && response.data.length > 0) {
+                        renderKline(response.data);
+                    }
+                }
+            });
+        }
+        
+        // 渲染K线图
+        function renderKline(data) {
+            const chart = echarts.init(document.getElementById('klineChart'));
+            
+            const dates = data.map(d => d.date);
+            const ohlc = data.map(d => [d.open, d.close, d.low, d.high]);
+            const volumes = data.map(d => d.volume);
+            
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: 'cross' }
+                },
+                legend: { data: ['K线', '成交量'] },
+                grid: [
+                    { left: '10%', right: '8%', height: '50%' },
+                    { left: '10%', right: '8%', top: '65%', height: '20%' }
+                ],
+                xAxis: [
+                    { type: 'category', data: dates, gridIndex: 0 },
+                    { type: 'category', data: dates, gridIndex: 1 }
+                ],
+                yAxis: [
+                    { scale: true, gridIndex: 0 },
+                    { scale: true, gridIndex: 1 }
+                ],
+                dataZoom: [
+                    { type: 'inside', xAxisIndex: [0, 1], start: 50, end: 100 }
+                ],
+                series: [
+                    {
+                        name: 'K线',
+                        type: 'candlestick',
+                        data: ohlc,
+                        itemStyle: {
+                            color: '#ef5350',
+                            color0: '#26a69a',
+                            borderColor: '#ef5350',
+                            borderColor0: '#26a69a'
+                        }
+                    },
+                    {
+                        name: '成交量',
+                        type: 'bar',
+                        xAxisIndex: 1,
+                        yAxisIndex: 1,
+                        data: volumes
+                    }
+                ]
+            };
+            
+            chart.setOption(option);
+            window.addEventListener('resize', () => chart.resize());
+        }
+        
+        // 格式化成交量
+        function formatVolume(vol) {
+            if (!vol) return '--';
+            if (vol >= 100000000) return (vol / 100000000).toFixed(2) + '亿股';
+            if (vol >= 10000) return (vol / 10000).toFixed(2) + '万股';
+            return vol.toFixed(0) + '股';
+        }
+        
+        // 格式化金额（后端 amount 单位为元，此处转为万元/亿元并带单位）
+        function formatAmount(amount) {
+            if (!amount && amount !== 0) return '--';
+            var n = Number(amount);
+            if (n >= 100000000) return (n / 100000000).toFixed(2) + ' 亿元';
+            if (n >= 10000) return (n / 10000).toFixed(2) + ' 万元';
+            return n.toFixed(0) + ' 元';
+        }
+        
+        // 显示错误
+        function showError(msg) {
+            $('#stockName').text('加载失败');
+            $('#stockPrice').text('--');
+            $('#stockChange').text(msg);
+        }
+        
+        // 页面加载
+        $(document).ready(function() {
+            loadStockDetail();
+            loadKline();
+        });
+    </script>
+</body>
+</html>

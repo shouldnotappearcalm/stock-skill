@@ -5,7 +5,7 @@ metadata:
   openclaw:
     requires:
       bins: ["python3"]
-      packages: ["akshare", "flask", "numpy", "pandas", "requests", "tushare", "pyautogui"]
+      packages: ["akshare", "flask", "numpy", "pandas", "requests"]
 ---
 
 # A股量化选股和监控系统
@@ -74,10 +74,16 @@ metadata:
 - 风险等级
 - 持仓周期
 
-#### 选股配置
-- 自动过滤创业板(3开头)和科创板(688开头)
-- 支持自定义监控股票池（watchlist.json）
-- 每日自动推荐，飞书/企业微信告警
+#### 选股范围与配置（重要）
+
+**短线/中长线选股仅在「监控股票池」内执行**：推荐结果只从当前 watchlist 中的股票里打分排序产出，**不会**在全市场 5000+ 只股票中扫描。因此：
+- 若 watchlist 为空或仅少量股票，选股结果会很少或为空；
+- 需要先通过「默认 config + 手动/批量维护 watchlist」或「批量导入脚本」把候选池扩大到一定规模（例如几百只），再跑选股脚本或定时任务。
+
+**配置方式**：
+- 监控股票池以 **watchlist.json** 为准（与 config.py 的 WATCHED_STOCKS 互补：无 watchlist 时用 config 初始化并写入 watchlist）。
+- 选股脚本（短线/中长线）读取 watchlist.json，并自动过滤创业板(3 开头)和科创板(688 开头)。
+- 支持通过 Web「股票池管理」单只增删，或通过 **批量导入脚本**（见下文）从文件/指数成分股批量加入。
 
 ### 3. 实时价格监控
 - 交易时间：每5秒更新价格
@@ -87,13 +93,13 @@ metadata:
 ### 4. 涨跌幅排行榜
 - 实时涨幅榜（Top 5）
 - 实时跌幅榜（Top 5）
-- 支持点击查看详情
+- 支持点击跳转股票详情页 `/stock/<code>`
 
-### 5. Web可视化界面
+### 5. Web 可视化界面
 - 市场情绪仪表盘
-- 监控股票卡片展示
-- 统计数据汇总
-- 响应式设计
+- 监控股票卡片展示、股票详情页（`/stock/<code>`）
+- 回测、参数优化、股票池管理入口
+- 统计数据汇总，响应式设计
 
 ## 使用方式
 
@@ -101,18 +107,14 @@ metadata:
 
 1. **安装依赖**
 ```bash
-pip3 install akshare flask numpy pandas requests tushare pyautogui
+pip3 install akshare flask numpy pandas requests
 ```
 
-2. **配置监控股票**
-编辑 `web_app.py`，修改 `WATCHED_STOCKS` 列表：
-```python
-WATCHED_STOCKS = [
-    '600900',  # 长江电力
-    '601985',  # 中国核电
-    # 添加更多股票代码...
-]
-```
+2. **配置监控股票（选股候选池）**
+- 编辑 `scripts/config.py` 中的 `WATCHED_STOCKS` 作为初始列表；或
+- 直接维护同目录下的 `watchlist.json`（选股与 Web 均以此为准）；或
+- 启动 Web 后通过「股票池管理」页单只增删；或
+- **批量扩充候选池**：使用 `scripts/watchlist_batch.py` 从本地文件或指数成分股（如沪深300、中证500）批量加入，详见下方「批量维护 watchlist」。
 
 3. **启动Web服务**
 ```bash
@@ -133,6 +135,26 @@ openclaw cron add --name "A股全市场数据更新" \
 
 替换 `<skill-path>` 为技能安装路径。
 
+### 批量维护 watchlist
+
+选股只针对 watchlist 内股票，若池子太小可先批量扩充：
+
+```bash
+cd scripts
+
+# 从本地文件追加（每行一个 6 位代码，或 JSON 数组）
+python3 watchlist_batch.py --file codes.txt
+
+# 从指数成分股追加（与现有列表合并、去重）
+python3 watchlist_batch.py --index hs300
+python3 watchlist_batch.py --index zz500
+
+# 用指数成分股覆盖当前 watchlist（慎用）
+python3 watchlist_batch.py --index hs300 --replace
+```
+
+默认会排除创业板(3 开头)、科创板(688 开头)，与选股逻辑一致。
+
 ### 手动执行
 
 ```bash
@@ -148,33 +170,42 @@ python3 scripts/smart_market_updater.py
 # 检查交易时间
 python3 scripts/is_trading_time.py
 
-# 短线选股（每日推荐3-5只）
+# 短线选股（仅对 watchlist 内股票，每日推荐3-5只）
 python3 scripts/short_term_selector.py
 
-# 中长线选股（每日推荐5-10只）
+# 中长线选股（仅对 watchlist 内股票，每日推荐5-10只）
 python3 scripts/long_term_selector.py
 
 # 增强版中长线选股
 python3 scripts/enhanced_long_term_selector.py
 ```
 
+**脚本运行说明**：`is_trading_time.py` 在非交易时间会以退出码 1 退出（用于 cron 判断）。数据更新与选股脚本依赖网络，且会遍历 watchlist，执行时间可能较长（数分钟至十几分钟），属正常现象。
+
 ## 目录结构
 
 ```
 scripts/
-├── web_app.py                      # Flask Web服务
-├── stock_cache_db.py               # SQLite数据缓存
+├── config.py                       # 配置：WATCHED_STOCKS、Tushare、Web 等
+├── web_app.py                      # Flask Web 服务
+├── stock_cache_db.py               # SQLite 缓存（含开高低、换手、振幅等字段）
+├── watchlist.json                  # 自选股列表（与 config 互补，Web 可维护）
 ├── stock_async_fetcher.py          # 异步数据获取
 ├── market_sentiment.py             # 市场情绪计算
 ├── is_trading_time.py              # 交易时间判断
 ├── smart_market_updater.py         # 智能更新器
-├── update_all_market_data.py       # 全市场数据更新
+├── update_all_market_data.py       # 全市场数据更新（东方财富→akshare+腾讯兜底）
 ├── short_term_selector.py          # 短线选股引擎
 ├── long_term_selector.py           # 中长线选股引擎
 ├── enhanced_long_term_selector.py  # 增强版中长线选股
+├── advanced_long_term_indicators.py # 中长线高级指标（DMI/PEG）
+├── fundamental_data.py             # 基本面数据（占位，可选对接 Tushare）
 ├── strategy_config.py              # 策略配置文件
+├── unified_data_source.py          # 统一数据源（新浪→腾讯→东财/akshare 多级兜底）
+├── watchlist_batch.py              # 批量维护 watchlist（文件/指数成分股）
 └── templates/
-    └── index.html                  # Web前端页面
+    ├── index.html                  # 首页仪表盘
+    └── stock_detail.html           # 股票详情页
 ```
 
 ## API端点
@@ -206,7 +237,10 @@ scripts/
 返回监控股票实时价格（轻量级）
 
 ### GET /api/stock/<code>
-返回单只股票详情
+返回单只股票详情（含缓存中的开高低、换手、振幅等字段）
+
+### GET/POST/DELETE /api/watchlist
+获取、添加、删除自选股列表（与 `watchlist.json` 同步）
 
 ## 配置说明
 
@@ -231,7 +265,7 @@ MAX_AGE_MINUTES = 30  # 缓存有效期
 ```
 
 ### 监控股票配置
-编辑 `web_app.py` 中的 `WATCHED_STOCKS` 列表
+编辑 `scripts/config.py` 的 `WATCHED_STOCKS`，或维护 `scripts/watchlist.json`；Web 端「股票池管理」会读写 `watchlist.json`。
 
 ### 市场情绪阈值
 修改 `market_sentiment.py`：
@@ -245,10 +279,13 @@ LEVELS = [
 ]
 ```
 
-## 数据来源
+## 数据来源与兜底
 
-- **akshare**: 获取A股实时行情、全市场数据
-- **本地缓存**: SQLite数据库存储历史数据
+- **统一数据源**（`unified_data_source.py`）：对外单一入口，内部多级兜底，选股/Web 通过 `hybrid_data_source` 调用。
+  - **实时行情兜底顺序**：新浪 → 腾讯 → akshare（东方财富）；任一失败自动切下一源。
+  - **历史 K 线兜底顺序**：东方财富(ak) → 新浪(ak) → 腾讯(ak)，均经 akshare 封装，返回统一列 `date, open, high, low, close, volume, amount`。
+- **全市场更新**（`update_all_market_data.py`）：优先东方财富，失败时降级为 akshare 股票列表 + 腾讯财经批量行情。
+- **本地缓存**：SQLite（`stock_cache.db`）存储行情及开高低、换手、振幅等字段。
 
 ## 性能优化
 
@@ -267,9 +304,9 @@ LEVELS = [
 
 ## 故障排查
 
-### 问题1: 数据全为null
-**原因**: 非交易时间，akshare返回空数据
-**解决**: 等待交易时间，或导入演示数据
+### 问题1: 数据全为 null
+**原因**: 非交易时间主数据源返回空，或网络异常。
+**解决**: 先运行 `python3 update_all_market_data.py`（已支持东方财富 + 腾讯兜底）；若仍无数据可等待交易时间或检查网络。
 
 ### 问题2: Web界面一直转圈
 **原因**: 数据库无有效数据

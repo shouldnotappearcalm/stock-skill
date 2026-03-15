@@ -389,7 +389,8 @@ class EnhancedLongTermSelector:
     def close(self):
         self.ds.close()
         self.cache.close()
-        self.fundamental.close()
+        if hasattr(self.fundamental, 'close'):
+            self.fundamental.close()
 
 
 if __name__ == '__main__':

@@ -2,8 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 混合数据源管理器
-整合 Tushare Pro + 新浪财经 + akshare
-优先级: Tushare > 新浪 > akshare
+整合 Tushare Pro + 统一数据源（多级兜底）
+优先级: Tushare > 统一数据源(新浪→腾讯→东方财富/akshare)
+历史K线兜底: 东财(ak) → 新浪(ak) → 腾讯(ak)
 """
 
 import akshare as ak
@@ -13,6 +14,11 @@ import time
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import pandas as pd
+
+try:
+    from unified_data_source import UnifiedDataSource
+except ImportError:
+    UnifiedDataSource = None
 
 
 class HybridDataSource:
@@ -42,105 +48,49 @@ class HybridDataSource:
                 print(f"⚠️ Tushare Pro 连接失败: {e}")
                 print("   将使用 新浪财经 + akshare 作为备用")
         else:
-            print("ℹ️ 未配置 Tushare token，使用 新浪财经 + akshare")
+            print("ℹ️ 未配置 Tushare token，使用 统一数据源(新浪→腾讯→akshare)")
+        self._unified = UnifiedDataSource() if UnifiedDataSource else None
     
     def get_realtime_price(self, code: str) -> Optional[Dict]:
         """
-        获取实时价格（智能策略：交易时间用新浪，盘后用akshare）
-        
-        Args:
-            code: 股票代码 (如 '600900')
-            
-        Returns:
-            {'code': str, 'name': str, 'price': float, 'change_pct': float, ...}
+        获取实时价格（Tushare 优先，否则统一数据源兜底：新浪→腾讯→akshare/东财）
         """
-        from datetime import datetime, time as dt_time
-        
-        # 判断是否交易时间
-        now = datetime.now()
-        current_time = now.time()
-        weekday = now.weekday()
-        
-        is_trading = False
-        if weekday < 5:  # 工作日
-            morning_start = dt_time(9, 15)
-            morning_end = dt_time(11, 30)
-            afternoon_start = dt_time(13, 0)
-            afternoon_end = dt_time(15, 0)
-            is_trading = (morning_start <= current_time <= morning_end) or \
-                        (afternoon_start <= current_time <= afternoon_end)
-        
-        if is_trading:
-            # 交易时间：尝试新浪（快），失败则用akshare
-            result = self._get_sina_realtime(code)
+        if self.tushare_available:
+            result = self._get_tushare_realtime(code)
             if result:
                 return result
-        
-        # 盘后或新浪失败：使用akshare
-        result = self._get_akshare_realtime(code)
-        return result
+        if self._unified:
+            return self._unified.get_realtime_price(code)
+        result = self._get_sina_realtime(code)
+        if result:
+            return result
+        return self._get_akshare_realtime(code)
     
     def get_realtime_batch(self, codes: List[str]) -> List[Dict]:
         """
-        批量获取实时价格（交易时间尝试新浪批量，盘后用akshare逐个）
-        
-        Args:
-            codes: 股票代码列表
-            
-        Returns:
-            [{'code': str, 'name': str, 'price': float, ...}, ...]
+        批量获取实时价格（统一数据源兜底：新浪批量→腾讯批量→逐个）。
+        若 unified_data_source 未加载，则仅用新浪+akshare 逐只拉取。
         """
-        from datetime import datetime, time as dt_time
-        
-        # 判断是否交易时间
-        now = datetime.now()
-        current_time = now.time()
-        weekday = now.weekday()
-        
-        is_trading = False
-        if weekday < 5:
-            morning_start = dt_time(9, 15)
-            morning_end = dt_time(11, 30)
-            afternoon_start = dt_time(13, 0)
-            afternoon_end = dt_time(15, 0)
-            is_trading = (morning_start <= current_time <= morning_end) or \
-                        (afternoon_start <= current_time <= afternoon_end)
-        
-        if is_trading:
-            # 交易时间：尝试新浪批量（但可能超时）
-            result = self._get_sina_batch(codes)
-            if result and len(result) > 0:
-                return result
-        
-        # 盘后或新浪失败：逐个查询
+        if self._unified:
+            return self._unified.get_realtime_batch(codes)
         results = []
         for code in codes:
             data = self.get_realtime_price(code)
             if data:
                 results.append(data)
-        
         return results
     
     def get_history_data(self, code: str, days: int = 120) -> Optional[pd.DataFrame]:
         """
-        获取历史数据（优先级：Tushare > akshare）
-        
-        Args:
-            code: 股票代码
-            days: 天数
-            
-        Returns:
-            DataFrame with columns: date, open, high, low, close, volume, amount
+        获取历史K线（Tushare 优先，否则统一数据源兜底：东财→新浪→腾讯，均通过 akshare）
         """
-        # 方案1: Tushare（推荐，数据质量高）
         if self.tushare_available:
             result = self._get_tushare_history(code, days)
             if result is not None and not result.empty:
                 return result
-        
-        # 方案2: akshare（备用）
-        result = self._get_akshare_history(code, days)
-        return result
+        if self._unified:
+            return self._unified.get_history_data(code, days)
+        return self._get_akshare_history(code, days)
     
     def _get_sina_realtime(self, code: str) -> Optional[Dict]:
         """新浪财经实时行情"""
@@ -171,7 +121,7 @@ class HybridDataSource:
             name = fields[0]
             price = float(fields[3])
             prev_close = float(fields[2])
-            change_pct = ((price - prev_close) / prev_close) * 100
+            change_pct = ((price - prev_close) / prev_close) * 100 if prev_close else 0
             volume = float(fields[8])
             amount = float(fields[9])
             
@@ -235,8 +185,7 @@ class HybridDataSource:
                 name = fields[0]
                 price = float(fields[3])
                 prev_close = float(fields[2])
-                change_pct = ((price - prev_close) / prev_close) * 100
-                
+                change_pct = ((price - prev_close) / prev_close) * 100 if prev_close else 0
                 results.append({
                     'code': code,
                     'name': name,

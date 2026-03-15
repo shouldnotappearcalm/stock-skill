@@ -30,9 +30,15 @@ class StockCache:
                 code TEXT PRIMARY KEY,
                 name TEXT,
                 price REAL,
+                prev_close REAL,
+                open REAL,
+                high REAL,
+                low REAL,
                 change_pct REAL,
                 volume REAL,
                 amount REAL,
+                turnover REAL,
+                amplitude REAL,
                 update_time TIMESTAMP
             )
         ''')
@@ -84,37 +90,66 @@ class StockCache:
         for stock in stocks_data:
             cursor.execute('''
                 INSERT OR REPLACE INTO stocks 
-                (code, name, price, change_pct, volume, amount, update_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (code, name, price, prev_close, open, high, low, change_pct, volume, amount, turnover, amplitude, update_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 stock['code'],
                 stock['name'],
-                stock['price'],
-                stock['change_pct'],
+                stock.get('price'),
+                stock.get('prev_close'),
+                stock.get('open'),
+                stock.get('high'),
+                stock.get('low'),
+                stock.get('change_pct'),
                 stock.get('volume', 0),
                 stock.get('amount', 0),
+                stock.get('turnover'),
+                stock.get('amplitude'),
                 now
             ))
         
         self.conn.commit()
     
     def get_stock(self, code: str) -> Optional[Dict]:
-        """获取单只股票数据"""
+        """获取单只股票数据，兼容旧表结构（7列）与新表结构（13列）"""
         cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM stocks WHERE code = ?', (code,))
         row = cursor.fetchone()
         
-        if row:
+        if not row:
+            return None
+        n = len(row)
+        if n >= 13:
             return {
                 'code': row[0],
                 'name': row[1],
                 'price': row[2],
-                'change_pct': row[3],
-                'volume': row[4],
-                'amount': row[5],
-                'update_time': row[6]
+                'prev_close': row[3],
+                'open': row[4],
+                'high': row[5],
+                'low': row[6],
+                'change_pct': row[7],
+                'volume': row[8],
+                'amount': row[9],
+                'turnover': row[10],
+                'amplitude': row[11],
+                'update_time': row[12]
             }
-        return None
+        return {
+            'code': row[0],
+            'name': row[1],
+            'price': row[2],
+            'prev_close': None,
+            'open': None,
+            'high': None,
+            'low': None,
+            'change_pct': row[3] if n > 3 else None,
+            'volume': row[4] if n > 4 else None,
+            'amount': row[5] if n > 5 else None,
+            'turnover': None,
+            'amplitude': None,
+            'update_time': row[6] if n > 6 else None
+        }
     
     def get_all_stocks(self, max_age_minutes=30) -> List[Dict]:
         """获取所有股票（过期数据会被过滤）"""

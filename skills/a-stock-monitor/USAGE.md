@@ -23,30 +23,28 @@ pip3 install akshare flask flask-login ccxt
 - 如需自定义路径，可设置环境变量：  
   `export STOCK_CACHE_DB=/你的路径/stock_cache.db`
 
-### 3. 监控股票配置
+### 3. 监控股票配置（选股候选池）
 
-**方式 A：Web 界面用**
+**重要**：短线/中长线选股**只在 watchlist 内的股票上执行**，不会在全市场扫描。若 watchlist 为空或很少，推荐结果会很少或为空，需先扩充候选池。
 
-编辑 `scripts/web_app.py`，找到 `WATCHED_STOCKS`，按需增删股票代码：
+**方式 A：config 初始 + watchlist 持久**
 
-```python
-WATCHED_STOCKS = [
-    '600036',  # 招商银行
-    '601318',  # 中国平安
-    '600519',  # 贵州茅台
-    # 添加更多 6 位股票代码...
-]
-```
+- 编辑 `scripts/config.py` 的 `WATCHED_STOCKS` 作为默认列表；首次启动 Web 或选股时若无 `watchlist.json` 会据此创建。
+- 之后以 **watchlist.json** 为准（Web「股票池管理」与选股脚本都读写该文件）。
 
-**方式 B：选股脚本用（短线/中长线）**
+**方式 B：直接编辑 watchlist.json**
 
-在 `scripts` 目录下创建或编辑 `watchlist.json`，写入股票代码数组，例如：
+在 `scripts` 目录下创建或编辑 `watchlist.json`，例如：
 
 ```json
 ["600036", "601318", "600519", "000858", "601012"]
 ```
 
-选股时会自动排除创业板(3 开头)和科创板(688 开头)。
+**方式 C：批量扩充（推荐）**
+
+用脚本从文件或指数成分股批量加入，见下文「批量维护 watchlist」。
+
+选股脚本会从 watchlist 读取列表，并自动排除创业板(3 开头)和科创板(688 开头)。
 
 ### 4. 可选：全局配置
 
@@ -91,25 +89,45 @@ python3 market_sentiment.py
 
 输出为 JSON 格式的市场情绪评分与统计。
 
-### 4. 短线选股（每日 3–5 只）
+### 4. 批量维护 watchlist
 
-依赖 `watchlist.json` 和全市场/缓存数据，执行：
+选股仅针对 watchlist 内股票，池子过小时可先批量扩充：
+
+```bash
+cd scripts
+
+# 从指数成分股追加（与现有列表合并、去重）
+python3 watchlist_batch.py --index hs300
+python3 watchlist_batch.py --index zz500
+
+# 从本地文件追加（每行一个 6 位代码，或一行 JSON 数组）
+python3 watchlist_batch.py --file codes.txt
+
+# 用指数成分股覆盖当前 watchlist
+python3 watchlist_batch.py --index hs300 --replace
+```
+
+默认会排除创业板、科创板；保留则加 `--no-filter`。
+
+### 5. 短线选股（每日 3–5 只）
+
+仅对 **watchlist 内**股票打分排序，依赖 `watchlist.json` 与缓存数据：
 
 ```bash
 cd scripts
 python3 short_term_selector.py
 ```
 
-### 5. 中长线选股（每日 5–10 只）
+### 6. 中长线选股（每日 5–10 只）
 
-同样需要 `watchlist.json` 与缓存数据：
+同样仅对 **watchlist 内**股票，需要 `watchlist.json` 与缓存数据：
 
 ```bash
 cd scripts
 python3 long_term_selector.py
 ```
 
-### 6. 智能更新（仅交易时间更新）
+### 7. 智能更新（仅交易时间更新）
 
 适合做定时任务，只在 A 股交易时段执行更新逻辑：
 
@@ -118,7 +136,7 @@ cd scripts
 python3 smart_market_updater.py
 ```
 
-### 7. 启动 Web 界面
+### 8. 启动 Web 界面
 
 ```bash
 cd scripts
@@ -129,7 +147,7 @@ python3 web_app.py
 - 默认账号：`admin` / `admin123`（其他账号见 `web_app.py` 中 `USERS`）
 - 功能：监控列表、市场情绪、回测入口等（回测当前为占位实现）
 
-### 8. 检查是否交易时间
+### 9. 检查是否交易时间
 
 ```bash
 cd scripts
@@ -163,7 +181,8 @@ openclaw cron add --name "A股全市场数据更新" \
 | 路径 | 说明 |
 |------|------|
 | `scripts/web_app.py` | Web 服务入口；监控列表在代码内 `WATCHED_STOCKS`，启动时也会读 `watchlist.json` |
-| `scripts/watchlist.json` | 选股用股票池（需自行创建） |
+| `scripts/watchlist.json` | 选股与 Web 共用股票池（选股仅在此范围内执行） |
+| `scripts/watchlist_batch.py` | 批量维护 watchlist：从文件或指数成分股追加/覆盖 |
 | `scripts/config.py` | 全局配置（监控列表、Web、密码等） |
 | `scripts/stock_cache_db.py` | 缓存逻辑；库文件默认同目录下 `stock_cache.db` |
 | `scripts/update_all_market_data.py` | 全市场数据更新 |

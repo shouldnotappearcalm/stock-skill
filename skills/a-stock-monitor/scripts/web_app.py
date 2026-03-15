@@ -123,15 +123,26 @@ def api_stock_detail(code):
         cache.close()
         return jsonify({'status': 'error', 'message': '股票不存在'})
     
-    # 获取资金流
+    need_realtime = not _has_main_indicators(stock)
+    if need_realtime:
+        _fill_stock_from_realtime(stock, code)
+    
+    tech = cache.get_tech_indicators(code, max_age_hours=24)
+    if not tech:
+        tech = _calc_tech_indicators(code)
+        if tech:
+            cache.save_tech_indicators(code, tech)
+    if tech:
+        stock['tech_indicators'] = tech
+    
     fund = cache.get_fund_flow(code, max_age_hours=24)
     if fund:
         stock['fund_flow'] = fund
-    
-    # 获取技术指标
-    tech = cache.get_tech_indicators(code, max_age_hours=24)
-    if tech:
-        stock['tech_indicators'] = tech
+    else:
+        fund = _fetch_fund_flow(code)
+        if fund:
+            cache.save_fund_flow(code, fund)
+            stock['fund_flow'] = fund
     
     cache.close()
     
@@ -141,35 +152,207 @@ def api_stock_detail(code):
     })
 
 
+def _has_main_indicators(stock):
+    """判断缓存是否已有主要指标（今开、最高、最低、成交额等）"""
+    return (
+        stock.get('open') is not None
+        and stock.get('high') is not None
+        and stock.get('amount') is not None
+    )
+
+
+def _fill_stock_from_realtime(stock, code):
+    """当缓存缺少主要指标时，用实时数据补全"""
+    try:
+        from hybrid_data_source import HybridDataSource
+        ds = HybridDataSource()
+        rt = ds.get_realtime_price(code)
+        if not rt:
+            return
+        if stock.get('open') is None and rt.get('open') is not None:
+            stock['open'] = rt['open']
+        if stock.get('high') is None and rt.get('high') is not None:
+            stock['high'] = rt['high']
+        if stock.get('low') is None and rt.get('low') is not None:
+            stock['low'] = rt['low']
+        if stock.get('prev_close') is None and rt.get('prev_close') is not None:
+            stock['prev_close'] = rt['prev_close']
+        if stock.get('amount') is None and rt.get('amount') is not None:
+            stock['amount'] = rt['amount']
+        if stock.get('volume') is None and rt.get('volume') is not None:
+            stock['volume'] = rt['volume']
+        if stock.get('price') is None and rt.get('price') is not None:
+            stock['price'] = rt['price']
+        if stock.get('change_pct') is None and rt.get('change_pct') is not None:
+            stock['change_pct'] = rt['change_pct']
+        if stock.get('name') in (None, '') and rt.get('name'):
+            stock['name'] = rt['name']
+    except Exception:
+        pass
+
+
+def _calc_tech_indicators(code):
+    """计算技术指标"""
+    try:
+        import requests
+        import numpy as np
+        
+        # 获取K线数据
+        market = 'sh' if code.startswith('6') else 'sz'
+        symbol = f'{market}{code}'
+        url = f'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={symbol},day,,,60,qfq'
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        resp = requests.get(url, headers=headers, timeout=10)
+        result = resp.json()
+        
+        data_dict = result.get('data', {})
+        if not isinstance(data_dict, dict):
+            return None
+        stock_data = data_dict.get(symbol, {})
+        kline = stock_data.get('qfqday', [])
+        
+        if len(kline) < 20:
+            return None
+        
+        # 提取收盘价
+        closes = np.array([float(item[2]) for item in kline])
+        
+        # 计算MA
+        ma5 = np.mean(closes[-5:]) if len(closes) >= 5 else None
+        ma10 = np.mean(closes[-10:]) if len(closes) >= 10 else None
+        ma20 = np.mean(closes[-20:]) if len(closes) >= 20 else None
+        
+        # 计算RSI(14)
+        if len(closes) >= 15:
+            deltas = np.diff(closes[-15:])
+            gains = np.where(deltas > 0, deltas, 0)
+            losses = np.where(deltas < 0, -deltas, 0)
+            avg_gain = np.mean(gains)
+            avg_loss = np.mean(losses)
+            rs = avg_gain / avg_loss if avg_loss > 0 else 0
+            rsi = 100 - (100 / (1 + rs))
+        else:
+            rsi = None
+        
+        # 计算MACD(12,26,9)
+        if len(closes) >= 35:
+            ema12 = closes[-26:]
+            ema26 = closes[-26:]
+            # 简化计算
+            ema12_val = np.mean(closes[-12:])
+            ema26_val = np.mean(closes[-26:])
+            dif = ema12_val - ema26_val
+            dea = dif * 0.2 + np.mean(closes[-9:]) * 0.013  # 简化
+            macd = (dif - dea) * 2
+        else:
+            dif, dea, macd = None, None, None
+        
+        return {
+            'ma5': round(ma5, 2) if ma5 else None,
+            'ma10': round(ma10, 2) if ma10 else None,
+            'ma20': round(ma20, 2) if ma20 else None,
+            'rsi': round(rsi, 2) if rsi else None,
+            'macd': round(macd, 4) if macd else None,
+            'dif': round(dif, 4) if dif else None,
+            'dea': round(dea, 4) if dea else None,
+        }
+    except Exception as e:
+        return None
+
+
+def _fetch_fund_flow(code):
+    """获取资金流向数据（从东方财富）"""
+    try:
+        import requests
+        
+        # 判断市场
+        secid = f'1.{code}' if code.startswith('6') else f'0.{code}'
+        url = f'https://push2.eastmoney.com/api/qt/stock/fflow/kline/get?secid={secid}&klt=101&lmt=1&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61,f62,f63'
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Referer': 'https://data.eastmoney.com/'
+        }
+        resp = requests.get(url, headers=headers, timeout=10)
+        result = resp.json()
+        
+        if result.get('code') != 0:
+            return None
+        
+        data = result.get('data', {})
+        klines = data.get('klines', [])
+        if not klines:
+            return None
+        
+        # 解析最新一天的数据
+        # 格式: 日期,主力净流入,小单净流入,中单净流入,大单净流入,超大单净流入,主力净比,小单净比,中单净比,大单净比,超大单净比
+        parts = klines[-1].split(',')
+        main_in = float(parts[1]) if parts[1] else 0
+        retail_in = float(parts[2]) if parts[2] else 0
+        main_ratio = float(parts[6]) if parts[6] else 0
+        
+        return {
+            'main_in': main_in,
+            'retail_in': retail_in,
+            'main_ratio': main_ratio,
+        }
+    except Exception as e:
+        return None
+
+
 @app.route('/api/history/<code>')
 def api_history(code):
-    """获取历史K线数据"""
+    """获取历史K线数据（使用腾讯财经API）"""
     days = request.args.get('days', 60, type=int)
     
-    from tech_indicators import TechIndicatorCalculator
-    calc = TechIndicatorCalculator()
-    
-    history = calc.get_stock_history(code, days=days)
-    
-    if history is None:
-        return jsonify({'status': 'error', 'message': '获取历史数据失败'})
-    
-    # 转换为ECharts需要的格式
-    data = []
-    for date, row in history.iterrows():
-        data.append({
-            'date': date.strftime('%Y-%m-%d'),
-            'open': float(row['open']),
-            'close': float(row['close']),
-            'high': float(row['high']),
-            'low': float(row['low']),
-            'volume': float(row['volume'])
+    try:
+        import requests
+        
+        # 判断市场代码
+        market = 'sh' if code.startswith('6') else 'sz'
+        symbol = f'{market}{code}'
+        
+        # 腾讯日K数据API格式: param=市场代码,周期,起始日期,结束日期,数量,复权类型
+        url = f'https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param={symbol},day,,,{days},qfq'
+        headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
+        resp = requests.get(url, headers=headers, timeout=10)
+        
+        if resp.status_code != 200:
+            return jsonify({'status': 'error', 'message': '网络请求失败'})
+        
+        result = resp.json()
+        if result.get('code') != 0:
+            return jsonify({'status': 'error', 'message': '获取数据失败'})
+        
+        # 解析数据 - data 是字典 {symbol: {qfqday: [...]}}
+        data_dict = result.get('data', {})
+        if not isinstance(data_dict, dict):
+            return jsonify({'status': 'error', 'message': '数据格式错误'})
+        
+        stock_data = data_dict.get(symbol, {})
+        kline_data = stock_data.get('qfqday', [])
+        
+        if not kline_data:
+            return jsonify({'status': 'error', 'message': '暂无历史数据'})
+        
+        # 转换为ECharts需要的格式
+        # 腾讯格式: [日期, 开盘, 收盘, 最高, 最低, 成交量]
+        data = []
+        for item in kline_data[-days:]:
+            data.append({
+                'date': item[0],
+                'open': float(item[1]),
+                'close': float(item[2]),
+                'high': float(item[3]),
+                'low': float(item[4]),
+                'volume': float(item[5])
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'data': data
         })
-    
-    return jsonify({
-        'status': 'success',
-        'data': data
-    })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 
 @app.route('/api/backtest', methods=['POST'])
