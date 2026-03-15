@@ -75,6 +75,7 @@ def api_stocks():
             if tech:
                 stock['tech_indicators'] = tech
             
+            _normalize_amount_to_yuan(stock)
             stocks.append(stock)
     
     cache.close()
@@ -126,6 +127,13 @@ def api_stock_detail(code):
     need_realtime = not _has_main_indicators(stock)
     if need_realtime:
         _fill_stock_from_realtime(stock, code)
+    else:
+        try:
+            from is_trading_time import is_trading_time
+            if is_trading_time()[0]:
+                _merge_realtime_price(stock, code)
+        except Exception:
+            pass
     
     tech = cache.get_tech_indicators(code, max_age_hours=24)
     if not tech:
@@ -144,12 +152,28 @@ def api_stock_detail(code):
             cache.save_fund_flow(code, fund)
             stock['fund_flow'] = fund
     
+    _normalize_amount_to_yuan(stock)
     cache.close()
     
     return jsonify({
         'status': 'success',
         'data': stock
     })
+
+
+def _normalize_amount_to_yuan(stock):
+    """将成交额统一为元：异常大值（如误乘 1e8 的万）修正为元，供前端正确显示亿元/万元"""
+    amount = stock.get('amount')
+    if amount is None:
+        return
+    try:
+        a = float(amount)
+        if a > 1e12:
+            stock['amount'] = a / 10000
+        elif 0 < a < 1e7:
+            stock['amount'] = a * 10000
+    except (TypeError, ValueError):
+        pass
 
 
 def _has_main_indicators(stock):
@@ -186,6 +210,23 @@ def _fill_stock_from_realtime(stock, code):
         if stock.get('change_pct') is None and rt.get('change_pct') is not None:
             stock['change_pct'] = rt['change_pct']
         if stock.get('name') in (None, '') and rt.get('name'):
+            stock['name'] = rt['name']
+    except Exception:
+        pass
+
+
+def _merge_realtime_price(stock, code):
+    """开盘期间用实时数据覆盖价格与当日指标，保证详情页显示最新价"""
+    try:
+        from hybrid_data_source import HybridDataSource
+        ds = HybridDataSource()
+        rt = ds.get_realtime_price(code)
+        if not rt:
+            return
+        for key in ('price', 'change_pct', 'open', 'high', 'low', 'amount', 'volume', 'prev_close'):
+            if rt.get(key) is not None:
+                stock[key] = rt[key]
+        if rt.get('name'):
             stock['name'] = rt['name']
     except Exception:
         pass

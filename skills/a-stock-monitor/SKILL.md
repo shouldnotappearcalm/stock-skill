@@ -182,6 +182,8 @@ python3 scripts/enhanced_long_term_selector.py
 
 **脚本运行说明**：`is_trading_time.py` 在非交易时间会以退出码 1 退出（用于 cron 判断）。数据更新与选股脚本依赖网络，且会遍历 watchlist，执行时间可能较长（数分钟至十几分钟），属正常现象。
 
+**数据验证**：可用 `verify_data_sources.py` 拉取指定股票的实时价、K 线、成交额/成交量并打印，便于核对单位与数值。示例：`python3 scripts/verify_data_sources.py 600519`（默认实时 + 最近 5 日 K 线）、`python3 scripts/verify_data_sources.py 000858 --days 10 --cache`（含缓存对比）。
+
 ## 目录结构
 
 ```
@@ -202,6 +204,7 @@ scripts/
 ├── fundamental_data.py             # 基本面数据（占位，可选对接 Tushare）
 ├── strategy_config.py              # 策略配置文件
 ├── unified_data_source.py          # 统一数据源（新浪→腾讯→东财/akshare 多级兜底）
+├── verify_data_sources.py         # 数据验证：拉取实时/K线/成交等并打印，核对单位
 ├── watchlist_batch.py              # 批量维护 watchlist（文件/指数成分股）
 └── templates/
     ├── index.html                  # 首页仪表盘
@@ -290,39 +293,42 @@ LEVELS = [
 ## 性能优化
 
 1. **分级更新**
-   - 实时价格: 5秒（仅价格+涨跌）
-   - 完整数据: 30秒（含技术指标）
-   - 后端更新: 5分钟（全市场数据）
-
+   - 实时价格: 5 秒（仅价格+涨跌）
+   - 完整数据: 30 秒（含技术指标）
+   - 后端更新: 5 分钟（全市场数据）
 2. **智能缓存**
-   - 交易时间: 5分钟缓存
+   - 交易时间: 5 分钟缓存
    - 非交易时间: 显示历史数据
-
 3. **异步获取**
    - 使用异步方式获取全市场数据
    - 避免阻塞主线程
 
 ## 故障排查
 
-### 问题1: 数据全为 null
-**原因**: 非交易时间主数据源返回空，或网络异常。
-**解决**: 先运行 `python3 update_all_market_data.py`（已支持东方财富 + 腾讯兜底）；若仍无数据可等待交易时间或检查网络。
+### 问题 1：数据全为 null
 
-### 问题2: Web界面一直转圈
-**原因**: 数据库无有效数据
-**解决**: 运行 `python3 update_all_market_data.py`
+- **原因**：非交易时间主数据源返回空，或网络异常。
+- **解决**：先运行 `python3 update_all_market_data.py`（已支持东方财富 + 腾讯兜底）；若仍无数据可等待交易时间或检查网络。
 
-### 问题3: Cron任务不执行
-**原因**: 时区配置错误
-**解决**: 确保时区设置为 `Asia/Shanghai`
+### 问题 2：Web 界面一直转圈
 
-### 问题4: 端口被占用
-**原因**: Flask默认端口5000冲突
-**解决**: 修改 `web_app.py` 中的端口号
+- **原因**：数据库无有效数据。
+- **解决**：运行 `python3 update_all_market_data.py`。
+
+### 问题 3：Cron 任务不执行
+
+- **原因**：时区配置错误。
+- **解决**：确保时区设置为 `Asia/Shanghai`。
+
+### 问题 4：端口被占用
+
+- **原因**：Flask 默认端口 5000 冲突。
+- **解决**：修改 `web_app.py` 中的端口号。
 
 ## 扩展开发
 
 ### 添加新的监控指标
+
 编辑 `market_sentiment.py`，添加新的评分维度：
 
 ```python
@@ -339,6 +345,7 @@ def calculate_sentiment(stocks):
 ```
 
 ### 自定义告警规则
+
 创建新的告警脚本：
 
 ```python
@@ -358,10 +365,10 @@ def check_custom_alert():
 
 ## 技术栈
 
-- **后端**: Python 3.9+, Flask
-- **数据**: akshare, SQLite
-- **前端**: jQuery, Bootstrap
-- **自动化**: OpenClaw Cron
+- **后端**：Python 3.9+, Flask
+- **数据**：akshare, SQLite
+- **前端**：jQuery, Bootstrap
+- **自动化**：OpenClaw Cron
 
 ## 许可证
 
@@ -369,5 +376,6 @@ MIT License
 
 ## 致谢
 
-- akshare 提供A股数据接口
+- akshare 提供 A 股数据接口
 - OpenClaw 提供自动化调度能力
+

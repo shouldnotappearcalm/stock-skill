@@ -179,9 +179,10 @@ def fetch_all_market():
                 name = row['名称']
                 price = float(row['最新价'])
                 change_pct = float(row['涨跌幅'])
-                volume = float(row['成交量']) if '成交量' in row else 0
+                volume = float(row['成交量']) * 100 if '成交量' in row and row['成交量'] else 0
                 amount = float(row['成交额']) if '成交额' in row else 0
-                
+                if 0 < amount < 1e7:
+                    amount = amount * 10000
                 stocks_data.append({
                     'code': code,
                     'name': name,

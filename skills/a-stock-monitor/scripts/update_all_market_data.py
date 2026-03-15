@@ -93,8 +93,8 @@ def get_realtime_tencent_batch(codes, batch_size=80):
                     low = float(fields[34]) if len(fields) > 34 and fields[34] else price
                     # fields[6] 成交量单位是手，转换为股（1手=100股）
                     volume = float(fields[6]) * 100 if fields[6] else 0
-                    # fields[37] 成交额为「千万」元，转换为元（7.81 表示 7810万元）
-                    amount = float(fields[37]) * 10000000 if len(fields) > 37 and fields[37] else 0
+                    # fields[37] 成交额单位为「万」元，转换为元
+                    amount = float(fields[37]) * 10000 if len(fields) > 37 and fields[37] else 0
                     turnover = float(fields[38]) if len(fields) > 38 and fields[38] else 0
                     amplitude = float(fields[43]) if len(fields) > 43 and fields[43] else 0
                     
@@ -147,6 +147,9 @@ def update_all_market_data():
         for idx, row in df.iterrows():
             try:
                 code = str(row['代码'])
+                amount = float(row['成交额']) if row['成交额'] else None
+                if amount is not None and 0 < amount < 1e7:
+                    amount = amount * 10000
                 stock_data = {
                     'code': code,
                     'name': row['名称'],
@@ -156,8 +159,8 @@ def update_all_market_data():
                     'high': float(row.get('最高', 0)) if row.get('最高') else None,
                     'low': float(row.get('最低', 0)) if row.get('最低') else None,
                     'change_pct': float(row['涨跌幅']) if row['涨跌幅'] else None,
-                    'volume': float(row['成交量']) if row['成交量'] else None,
-                    'amount': float(row['成交额']) if row['成交额'] else None,
+                    'volume': float(row['成交量']) * 100 if row['成交量'] else None,
+                    'amount': amount,
                     'turnover': float(row.get('换手率', 0)) if row.get('换手率') else None,
                     'amplitude': float(row.get('振幅', 0)) if row.get('振幅') else None,
                 }

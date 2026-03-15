@@ -23,6 +23,21 @@ def _symbol_suffix(code: str) -> str:
     return f'sh{code}' if code.startswith('6') else f'sz{code}'
 
 
+def _amount_to_yuan(amount: float) -> float:
+    """东方财富等接口可能返回成交额单位为万元，此处统一转为元"""
+    if amount is None:
+        return 0
+    try:
+        a = float(amount)
+        if a <= 0:
+            return a
+        if 0 < a < 1e7:
+            return a * 10000
+        return a
+    except (TypeError, ValueError):
+        return 0
+
+
 def get_realtime_sina(code: str) -> Optional[Dict]:
     """新浪财经单只实时行情"""
     try:
@@ -77,8 +92,8 @@ def get_realtime_tencent_single(code: str) -> Optional[Dict]:
         prev_close = float(fields[4]) if fields[4] else price
         change_pct = float(fields[32]) if len(fields) > 32 and fields[32] else 0
         volume = float(fields[6]) * 100 if fields[6] else 0
-        # 腾讯 fields[37] 成交额为「千万」元，转为元
-        amount = float(fields[37]) * 10000000 if len(fields) > 37 and fields[37] else 0
+        # 腾讯 fields[37] 成交额单位为「万」元，转为元
+        amount = float(fields[37]) * 10000 if len(fields) > 37 and fields[37] else 0
         return {
             'code': code,
             'name': name,
@@ -125,7 +140,7 @@ def get_realtime_tencent_batch(codes: List[str], batch_size: int = 80) -> List[D
                     prev_close = float(fields[4]) if fields[4] else price
                     change_pct = float(fields[32]) if len(fields) > 32 and fields[32] else 0
                     volume = float(fields[6]) * 100 if fields[6] else 0
-                    amount = float(fields[37]) * 10000000 if len(fields) > 37 and fields[37] else 0
+                    amount = float(fields[37]) * 10000 if len(fields) > 37 and fields[37] else 0
                     results.append({
                         'code': code,
                         'name': name,
@@ -166,8 +181,8 @@ def get_realtime_akshare(code: str) -> Optional[Dict]:
             'name': r['名称'],
             'price': float(r['最新价']),
             'change_pct': float(r['涨跌幅']),
-            'volume': float(r['成交量']),
-            'amount': float(r['成交额']),
+            'volume': float(r['成交量']) * 100,
+            'amount': _amount_to_yuan(float(r['成交额'])),
             'open': float(_col(r, '今开', r['最新价'])),
             'high': float(_col(r, '最高', r['最新价'])),
             'low': float(_col(r, '最低', r['最新价'])),
@@ -234,13 +249,16 @@ def _normalize_history_columns(df: pd.DataFrame) -> Optional[pd.DataFrame]:
 
 
 def get_history_eastmoney(code: str, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
-    """东方财富历史K线（akshare）"""
+    """东方财富历史K线（akshare），成交量统一为股"""
     if not ak:
         return None
     try:
         df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date=start_date, end_date=end_date, adjust="")
         if df is None or df.empty:
             return None
+        if '成交量' in df.columns:
+            df = df.copy()
+            df['成交量'] = df['成交量'] * 100
         return _normalize_history_columns(df)
     except Exception:
         return None

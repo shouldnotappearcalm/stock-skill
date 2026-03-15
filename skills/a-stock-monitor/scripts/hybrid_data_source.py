@@ -251,14 +251,18 @@ class HybridDataSource:
                 return None
             
             row = stock.iloc[0]
-            
+            amount = float(row['成交额']) if row.get('成交额') is not None else 0
+            if 0 < amount < 1e7:
+                amount = amount * 10000
+            volume = float(row['成交量']) if row.get('成交量') is not None else 0
+            volume = volume * 100 if volume else 0
             return {
                 'code': code,
                 'name': row['名称'],
                 'price': row['最新价'],
                 'change_pct': row['涨跌幅'],
-                'volume': row['成交量'],
-                'amount': row['成交额'],
+                'volume': volume,
+                'amount': amount,
                 'source': 'akshare'
             }
         except Exception as e:
@@ -313,7 +317,6 @@ class HybridDataSource:
             if df is None or df.empty:
                 return None
             
-            # 重命名列
             df = df.rename(columns={
                 '日期': 'date',
                 '开盘': 'open',
@@ -323,7 +326,7 @@ class HybridDataSource:
                 '成交量': 'volume',
                 '成交额': 'amount',
             })
-            
+            df['volume'] = df['volume'] * 100
             return df[['date', 'open', 'high', 'low', 'close', 'volume', 'amount']].tail(days)
         except Exception as e:
             print(f"⚠️ akshare历史数据获取失败 {code}: {e}")
