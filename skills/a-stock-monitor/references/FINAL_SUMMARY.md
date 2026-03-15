@@ -214,6 +214,3 @@ clawhub install a-stock-monitor
 **系统版本**: v2.0  
 **最后更新**: 2026-02-24 11:05  
 **状态**: ✅ 生产就绪  
-**作者**: James Mei  
-**邮箱**: meijinmeng@126.com  
-**博客**: https://www.cnblogs.com/Jame-mei

@@ -1,10 +1,6 @@
 ---
 name: a-stock-monitor
 description: A股量化监控系统 - 7维度市场情绪评分、智能选股引擎（短线5策略+中长线7策略）、实时价格监控、涨跌幅排行榜。支持全市场5000+股票数据采集与分析，多指标共振评分，精确买卖点计算，动态止损止盈。每日自动推荐短线3-5只、中长线5-10只优质股票。包含Web界面、自动化Cron任务、历史数据回溯。适用于A股量化交易、技术分析、选股决策。
-author: James Mei
-contact:
-  email: meijinmeng@126.com
-  blog: https://www.cnblogs.com/Jame-mei
 metadata:
   openclaw:
     requires:
@@ -16,27 +12,8 @@ metadata:
 
 一个完整的A股量化选股、实时监控与市场情绪分析系统。
 
-**作者**: James Mei  
-**邮箱**: meijinmeng@126.com  
-**博客**: https://www.cnblogs.com/Jame-mei  
-**版本**: 1.1.2  
+**版本**: 0.0.1  
 **许可证**: MIT
-
-## 🆕 v1.1.2 更新 (2026-02-24)
-
-### 核心优化
-- ⚡ **性能提升6-10倍**：交易时间使用新浪财经（0.1秒 vs 1.5秒）
-- 🔧 **修复关键Bug**：全市场数据更新、选股功能
-- 📊 **数据完整性**：从8只提升到5748只（98.9%）
-- 🎯 **智能切换**：交易时间新浪优先，盘后akshare稳定
-
-### 技术改进
-- 双数据源架构（新浪+akshare）
-- 自动判断交易时间
-- 超时保护和降级机制
-- 完整的向后兼容
-
-详见：[CHANGELOG.md](references/CHANGELOG.md)
 
 ---
 
@@ -352,13 +329,6 @@ def check_custom_alert():
 ## 许可证
 
 MIT License
-
-## 联系作者
-
-- **邮箱**: meijinmeng@126.com
-- **博客**: https://www.cnblogs.com/Jame-mei
-
-欢迎反馈问题、建议和改进意见！
 
 ## 致谢
 
