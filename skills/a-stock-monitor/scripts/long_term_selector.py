@@ -37,6 +37,21 @@ class LongTermSelector:
             ]
             
             return filtered
+        except FileNotFoundError:
+            # 文件不存在时，使用 config.py 的默认值并保存
+            try:
+                from config import WATCHED_STOCKS
+                default_stocks = [
+                    code for code in WATCHED_STOCKS 
+                    if not code.startswith('3') and not code.startswith('688')
+                ]
+                # 保存到文件
+                with open('watchlist.json', 'w') as f:
+                    json.dump(default_stocks, f, ensure_ascii=False, indent=2)
+                print(f"📝 已创建默认监控列表: {len(default_stocks)} 只股票")
+                return default_stocks
+            except:
+                return []
         except:
             return []
     

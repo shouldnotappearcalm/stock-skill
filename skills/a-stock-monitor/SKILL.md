@@ -5,7 +5,7 @@ metadata:
   openclaw:
     requires:
       bins: ["python3"]
-      packages: ["akshare", "flask", "ccxt"]
+      packages: ["akshare", "flask", "numpy", "pandas", "requests", "tushare", "pyautogui"]
 ---
 
 # A股量化选股和监控系统
@@ -101,7 +101,7 @@ metadata:
 
 1. **安装依赖**
 ```bash
-pip3 install akshare flask ccxt
+pip3 install akshare flask numpy pandas requests tushare pyautogui
 ```
 
 2. **配置监控股票**

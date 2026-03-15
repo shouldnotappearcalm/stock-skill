@@ -154,15 +154,18 @@ class ShortTermIndicators:
     ) -> Dict[str, Any]:
         if atr_now <= 0:
             atr_now = current_price * 0.02
-        stop_price = round(current_price - stop_multiplier * atr_now, 2)
-        profit_price = round(current_price + profit_multiplier * atr_now, 2)
-        stop_pct = (stop_price - current_price) / current_price * 100 if current_price else 0
-        profit_pct = (profit_price - current_price) / current_price * 100 if current_price else 0
+        stop_loss = round(current_price - stop_multiplier * atr_now, 2)
+        take_profit = round(current_price + profit_multiplier * atr_now, 2)
+        stop_loss_pct = (stop_loss - current_price) / current_price * 100 if current_price else 0
+        take_profit_pct = (take_profit - current_price) / current_price * 100 if current_price else 0
+        atr_pct = (atr_now / current_price) * 100 if current_price else 0
         return {
             'buy_price': round(current_price, 2),
-            'stop_price': stop_price,
-            'profit_price': profit_price,
-            'stop_pct': round(stop_pct, 2),
-            'profit_pct': round(profit_pct, 2),
+            'stop_loss': stop_loss,
+            'take_profit': take_profit,
+            'stop_loss_pct': round(stop_loss_pct, 2),
+            'take_profit_pct': round(take_profit_pct, 2),
+            'atr': round(atr_now, 4),
+            'atr_pct': round(atr_pct, 2),
             'risk_reward_ratio': abs(profit_multiplier / stop_multiplier) if stop_multiplier else 0,
         }
