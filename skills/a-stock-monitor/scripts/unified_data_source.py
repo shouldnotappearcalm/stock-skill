@@ -24,7 +24,7 @@ def _symbol_suffix(code: str) -> str:
 
 
 def _amount_to_yuan(amount: float) -> float:
-    """东方财富等接口可能返回成交额单位为万元，此处统一转为元"""
+    """东方财富等接口成交额单位为「十万」元，此处统一转为元"""
     if amount is None:
         return 0
     try:
@@ -32,7 +32,7 @@ def _amount_to_yuan(amount: float) -> float:
         if a <= 0:
             return a
         if 0 < a < 1e7:
-            return a * 10000
+            return a * 100000
         return a
     except (TypeError, ValueError):
         return 0

@@ -182,7 +182,7 @@ def fetch_all_market():
                 volume = float(row['成交量']) * 100 if '成交量' in row and row['成交量'] else 0
                 amount = float(row['成交额']) if '成交额' in row else 0
                 if 0 < amount < 1e7:
-                    amount = amount * 10000
+                    amount = amount * 100000
                 stocks_data.append({
                     'code': code,
                     'name': name,

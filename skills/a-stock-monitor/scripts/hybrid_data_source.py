@@ -253,7 +253,7 @@ class HybridDataSource:
             row = stock.iloc[0]
             amount = float(row['成交额']) if row.get('成交额') is not None else 0
             if 0 < amount < 1e7:
-                amount = amount * 10000
+                amount = amount * 100000
             volume = float(row['成交量']) if row.get('成交量') is not None else 0
             volume = volume * 100 if volume else 0
             return {

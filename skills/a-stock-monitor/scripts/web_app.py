@@ -162,7 +162,7 @@ def api_stock_detail(code):
 
 
 def _normalize_amount_to_yuan(stock):
-    """将成交额统一为元：异常大值（如误乘 1e8 的万）修正为元，供前端正确显示亿元/万元"""
+    """将成交额统一为元：异常大值修正、东财十万转元，供前端正确显示亿元/万元"""
     amount = stock.get('amount')
     if amount is None:
         return
@@ -171,7 +171,7 @@ def _normalize_amount_to_yuan(stock):
         if a > 1e12:
             stock['amount'] = a / 10000
         elif 0 < a < 1e7:
-            stock['amount'] = a * 10000
+            stock['amount'] = a * 100000
     except (TypeError, ValueError):
         pass
 

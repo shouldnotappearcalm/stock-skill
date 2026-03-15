@@ -149,7 +149,7 @@ def update_all_market_data():
                 code = str(row['代码'])
                 amount = float(row['成交额']) if row['成交额'] else None
                 if amount is not None and 0 < amount < 1e7:
-                    amount = amount * 10000
+                    amount = amount * 100000
                 stock_data = {
                     'code': code,
                     'name': row['名称'],
